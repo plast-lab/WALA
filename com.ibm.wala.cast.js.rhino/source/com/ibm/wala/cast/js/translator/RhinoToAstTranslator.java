@@ -393,7 +393,7 @@ public class RhinoToAstTranslator implements TranslatorToCAst {
    * Used to represent a script or function in the CAst; see walkEntity().
    * 
    */
-  private static class ScriptOrFnEntity implements CAstEntity {
+  private class ScriptOrFnEntity implements CAstEntity {
     private final String[] arguments;
 
     private final String name;
@@ -410,6 +410,8 @@ public class RhinoToAstTranslator implements TranslatorToCAst {
     
     private final Position entityPosition;
     
+    private final Position[] paramPositions;
+    
     private ScriptOrFnEntity(AstNode n, Map<CAstNode, Collection<CAstEntity>> subs, CAstNode ast, CAstControlFlowMap map, CAstSourcePositionMap pos, String name) {
       this.name = name;
       this.entityPosition = pos.getPosition(ast);
@@ -424,7 +426,15 @@ public class RhinoToAstTranslator implements TranslatorToCAst {
         for (int j = 0; j < f.getParamCount(); j++) {
           arguments[i++] = f.getParamOrVarName(j);
         }
+   
+        List<AstNode> params = f.getParams();
+        paramPositions = new Position[ params.size() ];
+        for(int pi = 0; pi < params.size(); pi++) {
+          paramPositions[pi] = makePosition(params.get(pi));
+        }
+        
       } else {
+        paramPositions = new Position[0];
         arguments = new String[0];
       }
       kind = (n instanceof FunctionNode) ? CAstEntity.FUNCTION_ENTITY : CAstEntity.SCRIPT_ENTITY;
@@ -522,6 +532,11 @@ public class RhinoToAstTranslator implements TranslatorToCAst {
     @Override
     public CAstType getType() {
       return JSAstTranslator.Any;
+    }
+
+    @Override
+    public Position getPosition(int arg) {
+      return paramPositions[arg];
     }
   }
 
@@ -840,6 +855,8 @@ public class RhinoToAstTranslator implements TranslatorToCAst {
 	
 	@Override
 	public CAstNode visitForInLoop(ForInLoop node, WalkContext arg) {		
+	  CAstNode loop;
+	  CAstNode get;
 	  // TODO: fix the correlation-tracking rewriters, and kill the old for..in translation
 	  if (useNewForIn) {
 	    // set up 		
@@ -887,7 +904,7 @@ public class RhinoToAstTranslator implements TranslatorToCAst {
 	        visit(node.getBody(), loopContext),
 	        garbageLabel);
 
-	    CAstNode loop = Ast.makeNode(CAstNode.LOCAL_SCOPE,
+	    loop = Ast.makeNode(CAstNode.LOCAL_SCOPE,
 	        Ast.makeNode(CAstNode.BLOCK_STMT,
 	            loopHeader[0],
 	            loopHeader[1],
@@ -899,14 +916,13 @@ public class RhinoToAstTranslator implements TranslatorToCAst {
 	                    Ast.makeNode(CAstNode.BLOCK_EXPR,
 	                        Ast.makeNode(CAstNode.ASSIGN, 
 	                            Ast.makeNode(CAstNode.VAR, Ast.makeConstant(name)),
-	                            Ast.makeNode(CAstNode.EACH_ELEMENT_GET,   
+	                            get = Ast.makeNode(CAstNode.EACH_ELEMENT_GET,   
 	                                Ast.makeNode(CAstNode.VAR, Ast.makeConstant(tempName)),
 	                                readName(arg, null, name))),
 	                        readName(arg, null, name))),
 	                body),
 	            breakLabel));
 	    arg.cfg().map(node, loop);
-	    return loop;
 	  } else {
 	    CAstNode object = visit(node.getIteratedObject(), arg);
 	    String tempName = "for in loop temp";   
@@ -924,7 +940,7 @@ public class RhinoToAstTranslator implements TranslatorToCAst {
 	      initNode = 
 	          Ast.makeNode(CAstNode.ASSIGN, 
 	              Ast.makeNode(CAstNode.VAR, Ast.makeConstant(name)),
-	              Ast.makeNode(CAstNode.EACH_ELEMENT_GET, 
+	              get = Ast.makeNode(CAstNode.EACH_ELEMENT_GET, 
 	                  Ast.makeNode(CAstNode.VAR, Ast.makeConstant(tempName)),
 	                  readName(arg, null, name)));
 
@@ -947,10 +963,18 @@ public class RhinoToAstTranslator implements TranslatorToCAst {
 	      initNode = 
 	          Ast.makeNode(CAstNode.ASSIGN, 
 	              Ast.makeNode(CAstNode.VAR, Ast.makeConstant(name)),
-	              Ast.makeNode(CAstNode.EACH_ELEMENT_GET, 
+	              get = Ast.makeNode(CAstNode.EACH_ELEMENT_GET, 
 	                  Ast.makeNode(CAstNode.VAR, Ast.makeConstant(tempName)),
 	                  readName(arg, null, name)));
 
+	    }
+
+      arg.cfg().map(get, get);
+	    CAstNode ctch = arg.getCatchTarget();
+	    if (ctch != null) {
+	      arg.cfg().add(get, ctch, JavaScriptTypes.ReferenceError);
+	    } else {
+	      arg.cfg().add(get, CAstControlFlowMap.EXCEPTION_TO_EXIT, JavaScriptTypes.ReferenceError);       
 	    }
 
 	    // body
@@ -968,7 +992,7 @@ public class RhinoToAstTranslator implements TranslatorToCAst {
 	        visit(node.getBody(), loopContext),
 	        garbageLabel);
 
-	    CAstNode loop = Ast.makeNode(CAstNode.LOCAL_SCOPE,
+	    loop = Ast.makeNode(CAstNode.LOCAL_SCOPE,
 	        Ast.makeNode(CAstNode.BLOCK_STMT,
 	            loopHeader[0],
 	            loopHeader[1],
@@ -977,15 +1001,24 @@ public class RhinoToAstTranslator implements TranslatorToCAst {
 	                Ast.makeNode(CAstNode.BINARY_EXPR,
 	                    CAstOperator.OP_NE,
 	                    Ast.makeConstant(null),
-	                    Ast.makeNode(CAstNode.EACH_ELEMENT_GET, 
+	                    get = Ast.makeNode(CAstNode.EACH_ELEMENT_GET, 
 	                        Ast.makeNode(CAstNode.VAR, Ast.makeConstant(tempName)),
 	                        readName(arg, null, name))),
 	                body),
 	            breakLabel));
 	    arg.cfg().map(node, loop);
-	    return loop;
 	  }
-	}
+    
+    arg.cfg().map(get, get);
+    CAstNode ctch = arg.getCatchTarget();
+    if (ctch != null) {
+      arg.cfg().add(get, ctch, JavaScriptTypes.ReferenceError);
+    } else {
+      arg.cfg().add(get, CAstControlFlowMap.EXCEPTION_TO_EXIT, JavaScriptTypes.ReferenceError);       
+    }
+
+	  return loop;
+  }
 
 	@Override
 	public CAstNode visitForLoop(ForLoop node, WalkContext arg) {

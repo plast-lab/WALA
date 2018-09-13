@@ -274,7 +274,12 @@ public abstract class JDTJava2CAstTranslator<T extends Position> {
   protected final class ClassEntity implements CAstEntity {
     // TAGALONG (not static, will keep reference to ast, fIdentityMapper, etc)
 
-    private final String fName;
+    @Override
+	public Position getPosition(int arg) {
+		return null;
+	}
+
+	private final String fName;
 
     private final Collection<CAstQualifier> fQuals;
 
@@ -1031,7 +1036,13 @@ public abstract class JDTJava2CAstTranslator<T extends Position> {
       return new CAstType.Method() {
         private Collection<CAstType> fExceptionTypes = null;
 
+        
         @Override
+		public boolean isStatic() {
+			return getQualifiers().contains(CAstQualifier.STATIC);
+		}
+
+		@Override
         public CAstType getReturnType() {
           if (fReturnType != null)
             return fTypeDict.getCAstTypeFor(fReturnType);
@@ -1088,6 +1099,13 @@ public abstract class JDTJava2CAstTranslator<T extends Position> {
         }
       };
     }
+
+	@Override
+	public Position getPosition(int arg) {
+		// TODO Auto-generated method stub
+		SingleVariableDeclaration p = (SingleVariableDeclaration) fDecl.parameters().get(arg);
+		return makePosition(p);
+	}
   }
 
   // ////////////////////////////////////
@@ -1239,6 +1257,12 @@ public abstract class JDTJava2CAstTranslator<T extends Position> {
     public CAstType getType() {
       return fTypeDict.getCAstTypeFor(type);
     }
+
+
+	@Override
+	public Position getPosition(int arg) {
+		return null;
+	}
   }
 
   // /////////////////////////////////////
@@ -2305,7 +2329,7 @@ public abstract class JDTJava2CAstTranslator<T extends Position> {
   private CAstNode getSwitchCaseConstant(SwitchCase n, WalkContext context) {
     // TODO: enums
     Expression expr = n.getExpression();
-    Object constant = (expr == null) ? new Integer(0) : expr.resolveConstantExpressionValue(); // default case label of
+    Object constant = (expr == null) ? Integer.valueOf(0) : expr.resolveConstantExpressionValue(); // default case label of
     // "0" (what polyglot
     // does). we also set
     // SWITCH_DEFAULT
@@ -2562,7 +2586,7 @@ public abstract class JDTJava2CAstTranslator<T extends Position> {
     /*------ indexDecl --------- int tmpindex = 0 ------*/
     final String tmpIndexName = "for temp index";
     CAstNode indexDeclNode = makeNode(context, fFactory, n, CAstNode.DECL_STMT, fFactory.makeConstant(new InternalCAstSymbol(
-        tmpIndexName, fTypeDict.getCAstTypeFor(ast.resolveWellKnownType("int")), true)), fFactory.makeConstant(new Integer(0)));
+        tmpIndexName, fTypeDict.getCAstTypeFor(ast.resolveWellKnownType("int")), true)), fFactory.makeConstant(Integer.valueOf(0)));
 
     /*------ cond ------------- tmpindex < tmparray.length ------*/
     CAstNode tmpArrayLengthNode = makeNode(context, fFactory, n, CAstNode.ARRAY_LENGTH, makeNode(context, fFactory, n,
@@ -3016,6 +3040,11 @@ public abstract class JDTJava2CAstTranslator<T extends Position> {
       Assertions.UNREACHABLE("CompilationUnitEntity.getType()");
       return null;
     }
+
+	@Override
+	public Position getPosition(int arg) {
+		return null;
+	}
   }
 
   // /////////////////////////////
